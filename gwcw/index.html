@@ -1,0 +1,251 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,user-scalable=no">
+	<link rel="stylesheet" href="lib/tau/wearable/theme/default/tau.min.css">
+    <link rel="stylesheet" media="all and (-tizen-geometric-shape: circle)" href="lib/tau/wearable/theme/default/tau.circle.min.css">
+	<link rel="stylesheet" type="text/css" href="css\style.css">
+	<script type="text/javascript" src="lib/tau/wearable/js/tau.min.js"></script>
+	<script src="https://apis.daum.net/maps/maps3.js?apikey=049a3420ff529adaf2b0166e06f9afd7&libraries=services,clusterer,drawing"></script>
+	<script src="https://apis.skplanetx.com/tmap/js?version=1&format=javascript&appKey=e8396465-972a-33ad-a9a4-f455ef988647"></script>
+	<script type="text/javascript" src="js/main.js"></script>
+	<script type="text/javascript" src="js/search.js"></script>
+	<script type="text/javascript" src="js/schedule.js"></script>
+	<script type="text/javascript" src="js/findaway.js"></script>
+	<script type="text/javascript" src="js/getEventMarkers.js"></script>	
+</head>
+<body>
+<div id="topMenudv">
+	<button id="Mapmenu" value="메뉴" onclick="showMenulist();"><img src="/images/menu.png" width="50px"></img></button>
+	<button id="MapmyLocation" value="위치맨" onclick="myLocation();"><img src="/images/gps.png" width="50px"></img></button>
+</div>
+<div class="ui-page ui-page-active">	
+<div class="map_wrap" align="center">
+    <div id="map" style="width:500px;height:380px;position:relative;overflow:hidden;"></div>
+
+    <div id="menu_wrap" class="bg_white" style="display: none;">
+        <div class="option">
+            <div>            
+                <form onsubmit="">
+                	<input type="text" value="" id="searchword" size="15">
+                    <button type="button" onclick="searchPlaces();">검색하기</button><br>
+                </form>
+                출발지 : <input type="text" value="" id="keyword1" size="9" readonly>
+                도착지 : <input type="text" value="" id="keyword2" size="9" readonly>
+				<button type="button" onclick="ShowMap();">지도보기</button>
+            </div>
+        </div>
+        <hr>
+        <ul id="placesList"></ul>
+        <div id="pagination"></div>
+    </div>
+</div>
+</div>
+<div id="menuList" class="ui-content content-padding" style="display: none; z-index: 5;position: absolute;text-align: center;">
+	<header class="ui-header" style="background-color: rgba(0,31,56,1);">
+		<h2 class="ui-title" style="background-color: rgba(0,31,56,1);">Menu</h2>
+	</header>
+	<ul class="ui-listview" style="background: rgba(0, 0, 0, 1); margin-top: -11px;">
+		<li onclick="ShowMenu();">길찾기</li>
+		<li onclick="addSchedule();">일정등록</li>
+	</ul>
+</div>
+
+<script>
+var body = document.body;
+var currentLocation = null;
+var menu = document.getElementById('menuList');
+
+var startP;
+var startM;
+var arriveP;
+var arriveM;
+var searchItems;
+
+var infoBotmenu;
+var map;
+var clickfmarker;
+
+
+//주소-좌표 변환 객체를 생성합니다
+var geocoder = new daum.maps.services.Geocoder();
+
+function setClickmapEvent() {
+	daum.maps.event.addListener(map, 'click', Clickcallback);
+}
+
+function reloadMain() {
+	window.location.reload(true);
+}
+
+function Clickcallback(mouseEvent) {
+    searchDetailAddrFromCoords(mouseEvent.latLng, function(status, result) {
+        if (status === daum.maps.services.Status.OK) {
+        	address = result[0].jibunAddress.name;
+            var detailAddr = '<div>' + address + '</div>';            
+            var content = '<div class="bAddr" style="font-size: 13px; padding: 5px">' +
+                            '<span class="title">주소정보</span>' + detailAddr
+                            +'<button type="button" onclick="currentfind();">길찾기</button></div>';
+
+            sltlatlng = mouseEvent.latLng;
+			
+            // 마커를 클릭한 위치에 표시합니다 
+            clickfmarker.setPosition(mouseEvent.latLng);
+            clickfmarker.setMap(map);
+
+            // 인포윈도우에 클릭한 위치에 대한 법정동 상세 주소정보를 표시합니다
+            infowindow.setContent(content);
+            infowindow.open(map, clickfmarker);
+        }   
+    });
+}
+
+function searchDetailAddrFromCoords(coords, callback) {
+    // 좌표로 법정동 상세 주소 정보를 요청합니다
+    geocoder.coord2detailaddr(coords, callback);
+}
+
+window.onload = function () {
+
+	var mapContainer = document.getElementById('map'), // 지도를 표시할 div 
+	mapOption = {
+	    center: new daum.maps.LatLng(37.566826, 126.9786567), // 지도의 중심좌표
+	    level: 3 // 지도의 확대 레벨
+	};
+
+	//지도를 생성합니다    
+	map = new daum.maps.Map(mapContainer, mapOption);
+	clickfmarker = new daum.maps.Marker({ 
+	    // 지도 중심좌표에 마커를 생성합니다 
+	    position: map.getCenter()
+	});
+
+	
+	if(!documentsDir) {
+		tizen.filesystem.resolve('documents', onResolveSuccess, onResolveError, 'rw');		
+	}
+
+	if (tau.support.shape.circle) {
+		document.removeEventListener("rotarydetent", circle);
+		document.addEventListener("rotarydetent", circle);
+	}
+
+	document.addEventListener('tizenhwkey', function(e) {
+        if (e.keyName === "back") {
+            try {
+                var fl = findPolyline.length;
+                var ml = findMarker.length;
+                if(menu.style.display == "block") {
+                	menu.style.display = "none";
+                }
+            	if(fl > 0) {
+                	for(var i = 0; i < findPolyline.length; i++) {
+                		findPolyline[i].setMap(null);
+            		}                	
+                	infowindow.close();
+                	findPolyline = null;
+            	}
+            	if(ml > 0) {
+            		for(var i = 0; i < findMarker.length; i++) {
+            			findMarker[i].setMap(null);
+            		}
+            		daum.maps.event.removeListener(map, 'click', Clickcallback);
+            		findMarker = null;
+            		setClickmapEvent();
+            	} else {
+            		tizen.application.getCurrentApplication().exit();
+            		//window.history.back();
+            	}                
+            } catch (ignore) {console.log(ignore)}
+        }
+    });
+	setClickmapEvent();	
+	getMarkers();
+	myLocation();
+	//documentsDir.deleteFile(documentsDir.fullPath+"/miniMap_schedule.txt", onSuccess);
+}
+
+function circle(e) {
+	var level = map.getLevel();
+	
+	if (e.detail.direction === "CW") {
+		level--;
+		map.setLevel(level);
+	}
+	else {
+			level++;
+			map.setLevel(level);           		
+	}
+}
+
+function myLocation() {
+	if (navigator.geolocation) {
+		// GeoLocation을 이용해서 접속 위치를 얻어옵니다
+		navigator.geolocation.getCurrentPosition(success, geo_error, geo_options);
+	}
+	//tizen.application.getCurrentApplication().hide();
+}
+function geo_error() {
+	  alert("위치 정보를 사용할 수 없습니다.");	  
+}
+
+var geo_options = {
+  enableHighAccuracy: true, 
+  maximumAge        : 0, 
+  timeout           : Infinity
+};
+
+function success(position) { 
+    var lat = position.coords.latitude, // 위도
+    lon = position.coords.longitude; // 경도
+
+    currentLocation = new daum.maps.LatLng(lat, lon), // 마커가 표시될 위치를 geolocation으로 얻어온 좌표로 생성합니다
+    message = '<div style="padding:5px;">여기에 계신가요?!</div>'; // 인포윈도우에 표시될 내용입니다
+
+	// 마커와 인포윈도우를 표시합니다
+	displayMarker(currentLocation, message);
+}
+
+//지도에 마커와 인포윈도우를 표시하는 함수입니다
+function displayMarker(locPosition, message) {
+    // 마커를 생성합니다
+    var marker = new daum.maps.Marker({  
+        map: map, 
+        position: locPosition
+    }); 
+    
+    var iwContent = message, // 인포윈도우에 표시할 내용
+        iwRemoveable = true;
+
+    // 인포윈도우를 생성합니다
+    var infowindow = new daum.maps.InfoWindow({
+        content : iwContent,
+        removable : iwRemoveable
+    });
+    
+    // 인포윈도우를 마커위에 표시합니다 
+    //infowindow.open(map, marker);
+    
+    // 지도 중심좌표를 접속위치로 변경합니다
+    map.setCenter(locPosition);
+}
+
+function showMenulist() {	
+	menu.style.display = "block";
+	//menu.style.visibility = "visible";
+}
+
+function addSchedule() {
+	
+	menu.style.display = "none";
+	window.open('addSchedule.html', 'add', 'toolbar=no, location=no, status=no, menubar=no, scrollbars=auto, resizable=no, directories=no, width=330, height=380');
+	
+}
+
+</script>
+</body>
+</html>
+
+
